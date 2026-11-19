@@ -1,5 +1,5 @@
 ---
-name: apple-l10n
+name: loch-ness
 description: Localize an Apple-platform app (iOS, iPadOS, macOS, watchOS) so its wording matches Apple's own translations in iOS and macOS. Looks up how Apple translated the same English string, or the UI terms inside it, in a local database built from this Mac's system software and the newest simulator runtime of each platform, then translates and reviews a String Catalog (.xcstrings) or .strings/.stringsdict files with that evidence. Use when the user asks to localize or translate an app, fill in missing translations, add a language, review or fix existing translations, make wording "match iOS" or "sound like Apple", or asks how Apple translates a string or term. Also use for "build/update/purge the Apple localization database".
 ---
 
@@ -36,7 +36,7 @@ Run `lochness status` first.
 ## 2. Gather Apple's evidence for the strings
 
 ```sh
-lochness suggest path/to/Localizable.xcstrings -p iOS -l fr,de,ja --only-missing -o /tmp/apple-l10n.json
+lochness suggest path/to/Localizable.xcstrings -p iOS -l fr,de,ja --only-missing -o /tmp/loch-ness.json
 ```
 
 - `-p` is the app's platform: `iOS` for iPhone/iPad, `macOS`, `watchOS`. Leave it out for multiplatform
