@@ -1,6 +1,6 @@
 ---
 name: apple-l10n
-description: Localize an Apple-platform app (iOS, iPadOS, macOS, watchOS) so its wording matches Apple's own translations in iOS and macOS. Looks up how Apple translated the same English string, or the UI terms inside it, in a local database built from this Mac's system software and its newest iOS simulator runtime, then translates and reviews a String Catalog (.xcstrings) or .strings/.stringsdict files with that evidence. Use when the user asks to localize or translate an app, fill in missing translations, add a language, review or fix existing translations, make wording "match iOS" or "sound like Apple", or asks how Apple translates a string or term. Also use for "build/update/purge the Apple localization database".
+description: Localize an Apple-platform app (iOS, iPadOS, macOS, watchOS) so its wording matches Apple's own translations in iOS and macOS. Looks up how Apple translated the same English string, or the UI terms inside it, in a local database built from this Mac's system software and the newest simulator runtime of each platform, then translates and reviews a String Catalog (.xcstrings) or .strings/.stringsdict files with that evidence. Use when the user asks to localize or translate an app, fill in missing translations, add a language, review or fix existing translations, make wording "match iOS" or "sound like Apple", or asks how Apple translates a string or term. Also use for "build/update/purge the Apple localization database".
 ---
 
 # Apple-quality localization
@@ -19,16 +19,16 @@ macOS's `python3`. Below it is written as `lochness`.
 Run `lochness status` first.
 
 - **No database yet.** Before you build it, tell the user, in one or two sentences, that you're
-  building a local database of Apple's own translations from macOS and the newest iOS simulator
-  runtime on this Mac. Give the location, the disk space and the time from `status`'s estimate
-  (about 3.5–4 GB and under 10 minutes). Say that nothing is downloaded and
+  building a local database of Apple's own translations from macOS and the newest simulator
+  runtime of each platform on this Mac. Give the location, the disk space and the time from
+  `status`'s estimate (about 4–5 GB and 10 minutes). Say that nothing is downloaded and
   `lochness purge` removes it. Then run `lochness scan` **in the background**, since it outlasts a
   normal command timeout. Do work that doesn't need it meanwhile, such as reading the catalog and
   the app's context. If `scan` stops because of low disk space, tell the user; don't pass `--force` on
   your own.
-- **`status` warns that no iOS simulator runtime was found.** Pass the warning on: only macOS
-  wording will be available. Suggest installing one (Xcode > Settings > Components) for an iOS app.
-- **"not scanned yet" lists sources.** macOS was updated or a newer iOS runtime is installed. Tell the user
+- **`status` warns that no simulator runtime, or no iOS runtime, was found.** Pass the warning on:
+  iOS wording will be missing. Suggest installing one (Xcode > Settings > Components) for an iOS app.
+- **"not scanned yet" lists sources.** macOS was updated or a newer simulator runtime is installed. Tell the user
   and offer `lochness scan`, which adds only the new sources. Don't block on it: the existing data
   is still good.
 - Only run `lochness purge --yes` when the user asks to delete the database.
@@ -39,7 +39,7 @@ Run `lochness status` first.
 lochness suggest path/to/Localizable.xcstrings -p iOS -l fr,de,ja --only-missing -o /tmp/apple-l10n.json
 ```
 
-- `-p` is the app's platform: `iOS` for iPhone, iPad and watchOS apps, `macOS` for Mac apps. Leave it out for multiplatform
+- `-p` is the app's platform: `iOS` for iPhone/iPad, `macOS`, `watchOS`. Leave it out for multiplatform
   apps.
 - `-l` is the languages to work on (default: those already in the catalog). Use `--only-missing` to
   fill gaps. Leave it out when reviewing existing translations.

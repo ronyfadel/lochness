@@ -227,8 +227,8 @@ def cmd_status(args):
     pending = scan.pending_sources(sources, done)
     gb, minutes = scan.estimate(pending, {p for p, _ in done})
     out["not_scanned"] = [s["label"] for s in pending]
-    if not scan.has_ios(sources):
-        out["warning"] = scan.NO_SIMULATOR
+    if scan.simulator_warning(sources):
+        out["warning"] = scan.simulator_warning(sources)
     if pending:
         out["scan_estimate"] = {"gb": round(gb, 1), "minutes": round(minutes), "free_gb": round(scan.free_gb(path))}
     if args.json:
@@ -249,7 +249,7 @@ def cmd_status(args):
         print(f"`lochness scan` would take about {e['minutes']} minutes and add about {e['gb']:.1f} GB "
               f"({e['free_gb']} GB free).")
     else:
-        print("Up to date with this Mac's macOS and its latest iOS simulator runtime.")
+        print("Up to date with this Mac's macOS and the newest simulator runtime of each platform.")
     if "warning" in out:
         print(out["warning"])
 

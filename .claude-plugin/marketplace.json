@@ -5,7 +5,7 @@
   "plugins": [
     {
       "name": "apple-l10n",
-      "description": "Translate and review String Catalogs against Apple's own translations, from a database built locally from your Mac's OS and its iOS simulator runtime.",
+      "description": "Translate and review String Catalogs against Apple's own translations, from a database built locally from your Mac's OS and simulator runtimes.",
       "source": "./",
       "homepage": "https://github.com/ronyfadel/apple-loch-ness",
       "keywords": ["localization", "l10n", "xcstrings", "ios", "macos"]

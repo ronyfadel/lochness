@@ -8,8 +8,8 @@ def main():
     p.add_argument("--db", default=db.DEFAULT_DB, help=f"SQLite path (default {db.DEFAULT_DB}, or $LOCHNESS_DB)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("scan", help="scan macOS and the latest installed iOS simulator runtime")
-    s.add_argument("--only", action="append", help="only sources whose label contains this (e.g. macOS, iOS)")
+    s = sub.add_parser("scan", help="scan macOS and the newest simulator runtime of each platform")
+    s.add_argument("--only", action="append", help="only sources whose label contains this (e.g. macOS, iOS, watchOS)")
     s.add_argument("--rescan", action="store_true", help="scan sources again even if already in the database")
     s.add_argument("--workers", type=int)
     s.add_argument("--list", action="store_true", help="list the sources that would be scanned and exit")
@@ -18,7 +18,7 @@ def main():
     l = sub.add_parser("lookup", help="Apple's translations of an exact English string")
     l.add_argument("text")
     l.add_argument("-l", "--lang", help="comma-separated codes, e.g. ar,he,fr (default: all)")
-    l.add_argument("-p", "--platform", help="macOS or iOS")
+    l.add_argument("-p", "--platform", help="macOS, iOS, watchOS, tvOS or visionOS")
     l.add_argument("-i", "--nocase", action="store_true")
     l.add_argument("-n", "--top", type=int, default=3, help="translations to show per language")
     l.add_argument("--json", action="store_true")
@@ -36,7 +36,7 @@ def main():
     g = sub.add_parser("suggest", help="Apple's translations for every string in a catalog, as JSON for Claude")
     g.add_argument("catalog", help="a .xcstrings file, one lproj's .strings file, or - for English lines on stdin")
     g.add_argument("-l", "--lang", help="comma-separated codes (default: every language in the catalog)")
-    g.add_argument("-p", "--platform", help="macOS or iOS: match Apple's wording on that platform")
+    g.add_argument("-p", "--platform", help="macOS, iOS, watchOS, tvOS or visionOS: match Apple's wording on that platform")
     g.add_argument("--only-missing", action="store_true", help="only languages a string has no translation for yet")
     g.add_argument("--min-bundles", type=int, default=3,
                    help="a term must appear in at least this many Apple bundles (default 3)")
@@ -58,8 +58,8 @@ def main():
             sources = scan.discover_sources()
             for src in sources:
                 print(src["label"], "\n   ", "\n    ".join(src["dirs"]))
-            if not scan.has_ios(sources):
-                print(scan.NO_SIMULATOR)
+            if scan.simulator_warning(sources):
+                print(scan.simulator_warning(sources))
             return
         scan.scan(args.db, args.only, args.rescan, args.workers, args.force)
     else:

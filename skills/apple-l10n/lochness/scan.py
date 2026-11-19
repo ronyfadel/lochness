@@ -66,10 +66,16 @@ def discover_sources():
     mac_dirs = [r for r in MAC_ROOTS if os.path.isdir(r)] + apple_apps()
     sources.append({"platform": "macOS", "os_version": version, "os_build": build,
                     "root": "/", "dirs": mac_dirs, "label": f"macOS {version} ({build})"})
-    ios = latest_ios_runtime()
-    if ios:
-        sources.append(ios)
+    sources.extend(latest_runtimes())
     return sources
+
+
+SIM_PLATFORMS = {
+    "com.apple.platform.iphonesimulator": "iOS",
+    "com.apple.platform.watchsimulator": "watchOS",
+    "com.apple.platform.appletvsimulator": "tvOS",
+    "com.apple.platform.xrsimulator": "visionOS",
+}
 
 
 def _version_key(version, build):
@@ -80,38 +86,48 @@ def _version_key(version, build):
     return v, b
 
 
-def latest_ios_runtime():
-    """The newest installed iOS simulator runtime as a source, or None. Only one is scanned:
-    older runtimes and other platforms add disk space but little new wording."""
+def latest_runtimes():
+    """The newest installed simulator runtime of each platform, as sources. Older runtimes of a
+    platform cost disk space and add little new wording, so only one per platform is scanned."""
     try:
         out = subprocess.run(["xcrun", "simctl", "runtime", "list", "-j"], capture_output=True, text=True, timeout=60)
         runtimes = json.loads(out.stdout or "{}")
     except Exception:
         runtimes = {}
-    found = []
+    best = {}
     for rt in runtimes.values():
+        platform = SIM_PLATFORMS.get(rt.get("platformIdentifier"))
         bundle = rt.get("runtimeBundlePath")
-        if rt.get("platformIdentifier") != "com.apple.platform.iphonesimulator":
-            continue
-        if not bundle or rt.get("state") not in (None, "Ready"):
+        if not platform or not bundle or rt.get("state") not in (None, "Ready"):
             continue
         root = os.path.join(bundle, "Contents/Resources/RuntimeRoot")
         if not os.path.isdir(root):
             continue
         _, version, build = system_version(root)
         version, build = version or rt.get("version"), build or rt.get("build")
-        found.append({"platform": "iOS", "os_version": version, "os_build": build, "root": root, "dirs": [root],
-                      "label": f"iOS {version} ({build}) simulator"})
-    return max(found, key=lambda s: _version_key(s["os_version"], s["os_build"]), default=None)
+        src = {"platform": platform, "os_version": version, "os_build": build, "root": root, "dirs": [root],
+               "label": f"{platform} {version} ({build}) simulator"}
+        if platform not in best or _version_key(version, build) > _version_key(best[platform]["os_version"],
+                                                                               best[platform]["os_build"]):
+            best[platform] = src
+    return [best[p] for p in SIM_PLATFORMS.values() if p in best]
 
 
-NO_SIMULATOR = ("No iOS simulator runtime found, so only macOS will be scanned and iOS-only wording "
-                "(Settings, Health, SpringBoard…) will be missing. Install one in Xcode > Settings > Components, "
-                "or run `xcodebuild -downloadPlatform iOS`, then `lochness scan` again.")
+NO_SIMULATOR = ("No simulator runtimes found, so only macOS will be scanned and iOS-only wording "
+                "(Settings, Health, SpringBoard…) will be missing. Install the iOS runtime in Xcode > Settings > "
+                "Components, or run `xcodebuild -downloadPlatform iOS`, then `lochness scan` again.")
+NO_IOS = ("No iOS simulator runtime found, so iOS-only wording (Settings, Health, SpringBoard…) will be missing. "
+          "Install it in Xcode > Settings > Components, or run `xcodebuild -downloadPlatform iOS`.")
 
 
-def has_ios(sources):
-    return any(s["platform"] == "iOS" for s in sources)
+def simulator_warning(sources):
+    """A warning to show when simulator runtimes are missing, else None."""
+    platforms = {s["platform"] for s in sources}
+    if platforms == {"macOS"}:
+        return NO_SIMULATOR
+    if "iOS" not in platforms:
+        return NO_IOS
+    return None
 
 
 # Rough database growth per source, measured on macOS 26 + iOS 27 + watchOS 27
@@ -245,8 +261,9 @@ def scan(db_path, only=None, rescan=False, workers=None, force=False):
     if not first_run:
         with db.connect(db_path, readonly=True) as c:
             done = scanned_keys(c)
-    if not has_ios(sources) and not (only and not any("ios" in o.lower() for o in only)):
-        print(NO_SIMULATOR + "\n", flush=True)
+    warning = None if only else simulator_warning(sources)
+    if warning:
+        print(warning + "\n", flush=True)
     todo = sources if rescan else pending_sources(sources, done)
     if not todo:
         print("Nothing new to scan: every source is already in the database (use --rescan to scan again).")

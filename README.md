@@ -1,8 +1,8 @@
 # apple-loch-ness
 
 **Localize your app the way Apple localizes iOS.** A Claude Code skill and CLI that look up how Apple
-translated the same English string, or the UI terms inside it, across macOS and the iOS
-simulator runtime, so Claude's translations match the system your users already know.
+translated the same English string, or the UI terms inside it, across macOS and the
+iOS/watchOS simulator runtimes, so Claude's translations match the system your users already know.
 
 Ask Claude to translate "Not Now" into Italian and it may write "Non adesso". iOS says "Non ora" in
 148 places. "Start Recording" in Japanese is 収録を開始 in iOS, not the 録音を開始 a translator might
@@ -23,13 +23,13 @@ localization files that are already on your Mac and builds a local SQLite databa
 
 - macOS: `/System/Library`, `/System/Applications`, `/System/iOSSupport`, the Safari and OS cryptexes, `/Library/Apple`
 - Apple's apps in `/Applications` (`com.apple.*` only, e.g. Pages, Numbers, TestFlight) and the selected Xcode
-- the newest installed iOS simulator runtime (`xcrun simctl runtime list`): UIKit, SwiftUI, Settings, Health, Camera…
-  Older runtimes and other platforms are skipped: they cost disk space and add little new wording.
-  If no iOS runtime is installed, `lochness` says so and scans macOS only.
+- the newest installed simulator runtime of each platform (iOS, watchOS, tvOS, visionOS; `xcrun simctl runtime list`):
+  UIKit, SwiftUI, Settings, Health, Camera… Older runtimes of a platform are skipped: they cost disk space and add
+  little new wording. If no simulator runtime is installed, `lochness` says so and scans macOS only.
 
 It reads `.loctable`, `.strings` (binary, XML or text) and `.stringsdict` files. For macOS 26 plus the
-iOS 27 runtime, that's tens of millions of translations in about 90 languages, a **3.5–4 GB** database
-built in **under 10 minutes**. Before it starts, `lochness scan` prints the sources, the space it
+iOS 27 and watchOS 27 runtimes, that's tens of millions of translations in about 90 languages, a **4–5 GB**
+database built in **about 10 minutes**. Before it starts, `lochness scan` prints the sources, the space it
 needs and the free space on your disk. `lochness purge` deletes the database.
 
 The database lives at `~/Library/Application Support/lochness/apple-l10n.sqlite`, outside the
@@ -50,13 +50,13 @@ takes, then runs the scan in the background.
 
 **CLI only:** `pipx install git+https://github.com/ronyfadel/apple-loch-ness` (or
 `uv tool install …`), or clone and run `skills/apple-l10n/bin/lochness`. It needs macOS and Python 3.9+,
-standard library only, and an iOS simulator runtime (installed with Xcode) for the iOS strings.
+standard library only, and simulator runtimes (installed with Xcode) for iOS and watchOS strings.
 
 ## CLI
 
 ```sh
 lochness status                      # database location and size, what's scanned, what's new
-lochness scan                        # build, or add a newer macOS or iOS runtime
+lochness scan                        # build, or add a newer macOS or simulator runtime
 lochness scan --only iOS             # one source
 lochness purge                       # delete the database
 
