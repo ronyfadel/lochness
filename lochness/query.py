@@ -175,7 +175,11 @@ def cmd_check(args):
                    for r in report], sys.stdout, ensure_ascii=False, indent=2)
         print()
         return
+    seen = set()
     for status, code, key, source, ours, top, n, b in sorted(report, key=lambda r: (r[1], r[0], r[3])):
+        if (code, source, ours) in seen:
+            continue
+        seen.add((code, source, ours))
         print(f"[{code}] {status}: \"{source}\"")
         if ours is not None:
             print(f"    ours : {ours}")
