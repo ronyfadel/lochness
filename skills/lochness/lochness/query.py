@@ -8,10 +8,6 @@ from collections import defaultdict
 
 from . import db, parse, scan
 
-# When Apple has no table for a code, try these instead.
-LANG_FALLBACKS = {"pt-BR": ["pt"], "pt": ["pt-BR"], "es-419": ["es-MX", "es-US"], "nb": ["no"], "zh-HK": ["zh-Hant"]}
-
-
 def lang_ids(conn):
     return dict(conn.execute("SELECT code, id FROM langs"))
 
@@ -45,27 +41,31 @@ def translations(conn, text, langs=None, platform=None, nocase=False, variant=No
         places = [p for p in places if p[4].lower() == platform.lower()]
     if variant is not None:
         places = [p for p in places if p[7] == variant]
+    # For each requested locale, the Apple codes to read, best first: es-MX, then es-419, then es.
+    # Each string uses the best code its table has, since Apple ships es-MX for only a few bundles.
     want = None
     if langs:
-        want = {}
-        for code in langs:
-            for c in [parse.norm_lang(code)] + LANG_FALLBACKS.get(parse.norm_lang(code), []):
-                if c in ids:
-                    want[ids[c]] = code
-                    break
+        want = {code: [ids[c] for c in parse.lang_candidates(code) if c in ids] for code in langs}
     code_by_id = {i: c for c, i in ids.items()}
     agg = defaultdict(lambda: defaultdict(lambda: [set(), set()]))
     for table_id, key_id, variant_id, bname, bplat, *_ in places:
+        by_lang = defaultdict(list)
         for lang_id, tr in conn.execute(
                 "SELECT e.lang_id, x.text FROM entries e JOIN texts x ON x.id = e.text_id "
                 "WHERE e.table_id=? AND e.key_id=? AND e.variant_id=?", (table_id, key_id, variant_id)):
-            if want is not None and lang_id not in want:
-                continue
-            if lang_id in src_ids and want is None:
-                continue
-            code = want[lang_id] if want else code_by_id[lang_id]
-            agg[code][tr][0].add(bname)
-            agg[code][tr][1].add(bplat)
+            by_lang[lang_id].append(tr)
+        if want is None:
+            picks = [(code_by_id[l], trs) for l, trs in by_lang.items() if l not in src_ids]
+        else:
+            picks = []
+            for code, cands in want.items():
+                best = next((l for l in cands if l in by_lang), None)
+                if best is not None:
+                    picks.append((code, by_lang[best]))
+        for code, trs in picks:
+            for tr in trs:
+                agg[code][tr][0].add(bname)
+                agg[code][tr][1].add(bplat)
     out = {}
     for code, trs in agg.items():
         out[code] = sorted(((tr, len(b), sorted(b), p) for tr, (b, p) in trs.items()), key=lambda r: -r[1])
@@ -74,9 +74,23 @@ def translations(conn, text, langs=None, platform=None, nocase=False, variant=No
     return out, [(p[3], p[4], p[5], p[6], p[7]) for p in places]
 
 
+def check_langs(conn, langs):
+    """Warn when a database built with --langs can't answer for some of these locales."""
+    stored = scan.stored_locales(conn)
+    if not stored or not langs:
+        return
+    have = set(lang_ids(conn))
+    missing = [c for c in langs if not any(x in have for x in parse.lang_candidates(c))]
+    if missing:
+        print(f"note: this database only has {', '.join(stored)} (built with --langs), so there is nothing for "
+              f"{', '.join(missing)}. Run `lochness purge` and scan again with those languages added.",
+              file=sys.stderr)
+
+
 def cmd_lookup(args):
     conn = db.connect(args.db, readonly=True)
     langs = args.lang.split(",") if args.lang else None
+    check_langs(conn, langs)
     res, places = translations(conn, args.text, langs, args.platform, args.nocase)
     if args.json:
         json.dump({"text": args.text, "found_in": places,
@@ -153,6 +167,7 @@ def cmd_check(args):
     cat = load_catalog(args.xcstrings)
     src_lang = cat.get("sourceLanguage", "en")
     langs = args.lang.split(",") if args.lang else None
+    check_langs(conn, langs)
     agree = differ = unmatched = 0
     report = []
     for key, entry in cat.get("strings", {}).items():
@@ -222,10 +237,19 @@ def cmd_status(args):
         conn = db.connect(path, readonly=True)
         done = scan.scanned_keys(conn)
         out["size_gb"] = round(db.size_on_disk(path) / 1e9, 2)
+        out["languages"] = scan.stored_locales(conn) or "all"
         out["scanned"] = [{"source": label, "scanned_at": at} for label, at in
                           conn.execute("SELECT label, scanned_at FROM sources WHERE scanned_at IS NOT NULL ORDER BY id")]
     pending = scan.pending_sources(sources, done)
-    gb, minutes = scan.estimate(pending, {p for p, _ in done})
+    stored = out.get("languages")
+    if isinstance(stored, list):
+        locales = stored
+    elif stored is None and args.langs:
+        locales = args.langs.split(",")
+    else:
+        locales = None
+    keep = scan.keep_langs(locales)
+    gb, minutes = scan.estimate(pending, {p for p, _ in done}, keep)
     out["not_scanned"] = [s["label"] for s in pending]
     if scan.simulator_warning(sources):
         out["warning"] = scan.simulator_warning(sources)
@@ -236,7 +260,8 @@ def cmd_status(args):
         print()
         return
     if out["exists"]:
-        print(f"database  {path}  ({out['size_gb']:.1f} GB)")
+        langs_note = "all languages" if out["languages"] == "all" else "languages: " + ", ".join(out["languages"]) + " + English"
+        print(f"database  {path}  ({out['size_gb']:.1f} GB, {langs_note})")
         for s in out["scanned"]:
             print(f"  scanned  {s['source']}  ({s['scanned_at']})")
     else:
@@ -334,6 +359,7 @@ def cmd_suggest(args):
             langs = sorted({c for _, _, locs in items for c in locs if c != src_lang})
         if not langs:
             raise SystemExit("The catalog has no target languages yet; pass -l, e.g. -l fr,de,ja,ar.")
+    check_langs(conn, langs)
 
     cache = {}
 

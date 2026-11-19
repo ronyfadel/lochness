@@ -14,6 +14,8 @@ def main():
     s.add_argument("--workers", type=int)
     s.add_argument("--list", action="store_true", help="list the sources that would be scanned and exit")
     s.add_argument("--force", action="store_true", help="scan even if free disk looks too low")
+    s.add_argument("--langs", help="only store these locales (plus English), e.g. fr-FR,es-MX: a much smaller "
+                                   "database. Fixed when the database is first built; purge to change it")
 
     l = sub.add_parser("lookup", help="Apple's translations of an exact English string")
     l.add_argument("text")
@@ -45,6 +47,7 @@ def main():
 
     ss = sub.add_parser("status", help="where the database is, what is in it, and what is left to scan")
     ss.add_argument("--json", action="store_true")
+    ss.add_argument("--langs", help="estimate a scan limited to these locales, e.g. fr-FR,es-MX")
 
     pg = sub.add_parser("purge", help="delete the database (rebuild it with scan)")
     pg.add_argument("-y", "--yes", action="store_true", help="don't ask for confirmation")
@@ -61,7 +64,8 @@ def main():
             if scan.simulator_warning(sources):
                 print(scan.simulator_warning(sources))
             return
-        scan.scan(args.db, args.only, args.rescan, args.workers, args.force)
+        scan.scan(args.db, args.only, args.rescan, args.workers, args.force,
+                  args.langs.split(",") if args.langs else None)
     else:
         getattr(query, f"cmd_{args.cmd}")(args)
 

@@ -22,7 +22,11 @@ Run `lochness status` first.
   building a local database of Apple's own translations from macOS and the newest simulator
   runtime of each platform on this Mac. Give the location, the disk space and the time from
   `status`'s estimate (about 4–5 GB and 10 minutes). Say that nothing is downloaded and
-  `lochness purge` removes it. Then run `lochness scan` **in the background**, since it outlasts a
+  `lochness purge` removes it. If the user has said which languages they localize into, or disk
+  space is tight, build only those with `--langs`, using the catalog's locales (for example
+  `lochness scan --langs fr-FR,es-MX`). That makes it about 0.4 GB and 1 minute for two languages.
+  Tell them that adding a language later means `lochness purge` and a rebuild. Then run the scan
+  **in the background**, since it outlasts a
   normal command timeout. Do work that doesn't need it meanwhile, such as reading the catalog and
   the app's context. If `scan` stops because of low disk space, tell the user; don't pass `--force` on
   your own.
@@ -31,6 +35,8 @@ Run `lochness status` first.
 - **"not scanned yet" lists sources.** macOS was updated or a newer simulator runtime is installed. Tell the user
   and offer `lochness scan`, which adds only the new sources. Don't block on it: the existing data
   is still good.
+- **A lookup prints "this database only has …".** It was built with `--langs` and lacks a language
+  you need. Tell the user, and rebuild with the union of languages only if they agree.
 - Only run `lochness purge --yes` when the user asks to delete the database.
 
 ## 2. Gather Apple's evidence for the strings

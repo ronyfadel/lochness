@@ -149,14 +149,43 @@ def pending_sources(sources, done):
     return [s for s in sources if (s["platform"], s["os_build"]) not in done]
 
 
-def estimate(pending, done_platforms=()):
+# Each language is about 2% of a full database; English (always kept) and the
+# language-independent tables make up the rest of a small one.
+SHARE_PER_LANG = 0.016
+SHARE_FIXED = 0.02
+
+
+def keep_langs(locales):
+    """Apple language codes to store for these locales: each one's fallbacks, plus the English sources."""
+    if not locales:
+        return None
+    keep = set(db.SOURCE_LANGS)
+    for loc in locales:
+        keep.update(parse.lang_candidates(loc))
+    return keep
+
+
+def estimate(pending, done_platforms=(), keep=None):
     """(gigabytes, minutes) that scanning these sources should take."""
     gb, seen = 0.0, set(done_platforms)
     for s in pending:
         gb += GB_EXTRA_RUNTIME if s["platform"] in seen else GB_PER_SOURCE.get(s["platform"], 1.5)
         seen.add(s["platform"])
-    minutes = MINUTES_PER_SOURCE * len(pending) + (MINUTES_INDEXING if pending else 0)
-    return gb, minutes
+    minutes = MINUTES_PER_SOURCE * len(pending)
+    if keep:
+        gb *= min(1.0, SHARE_FIXED + SHARE_PER_LANG * len(keep - set(db.SOURCE_LANGS)))
+        # Files in other languages aren't even opened: about 30 s per source, mostly listing files.
+        return gb, 0.5 * len(pending) + (0.5 if pending else 0)
+    return gb, minutes + (MINUTES_INDEXING if pending else 0)
+
+
+def stored_locales(conn):
+    """The locales a database was limited to with --langs, or None for every language."""
+    try:
+        row = conn.execute("SELECT v FROM meta WHERE k = 'locales'").fetchone()
+    except Exception:
+        return None
+    return row[0].split(",") if row and row[0] else None
 
 
 def free_gb(db_path):
@@ -190,15 +219,19 @@ _bundle_cache = {}
 
 
 def parse_job(job):
-    path, root = job
+    path, root, keep = job
     cls = parse.classify(path)
     if cls is None:
         return None
     fmt, table, lang = cls
+    if keep and lang is not None and parse.norm_lang(lang) not in keep:
+        return None
     try:
         rows = parse.read_loctable(path) if fmt == "loctable" else parse.read_lproj_file(path, lang)
     except Exception as e:
         return ("error", path, str(e)[:200])
+    if keep:
+        rows = [r for r in rows if r[0] in keep]
     bdir = parse.find_bundle(path, root)
     if bdir not in _bundle_cache:
         _bundle_cache[bdir] = parse.bundle_info(bdir)
@@ -252,15 +285,24 @@ class Interner:
             self.pending = []
 
 
-def scan(db_path, only=None, rescan=False, workers=None, force=False):
+def scan(db_path, only=None, rescan=False, workers=None, force=False, locales=None):
     sources = discover_sources()
     if only:
         sources = [s for s in sources if any(o.lower() in s["label"].lower() for o in only)]
     first_run = not os.path.exists(db_path)
     done = set()
+    locales = sorted({parse.canonical_lang(l) for l in locales}) if locales else None
     if not first_run:
-        with db.connect(db_path, readonly=True) as c:
-            done = scanned_keys(c)
+        c = db.connect(db_path, readonly=True)
+        done = scanned_keys(c)
+        stored = stored_locales(c)
+        c.close()
+        if locales and locales != stored:
+            have = ", ".join(stored) if stored else "every language"
+            raise SystemExit(f"The database at {db_path} was built for {have}. To build it for "
+                             f"{', '.join(locales)} instead, run `lochness purge` first, then scan again.")
+        locales = stored
+    keep = keep_langs(locales)
     warning = None if only else simulator_warning(sources)
     if warning:
         print(warning + "\n", flush=True)
@@ -268,11 +310,14 @@ def scan(db_path, only=None, rescan=False, workers=None, force=False):
     if not todo:
         print("Nothing new to scan: every source is already in the database (use --rescan to scan again).")
         return
-    gb, minutes = estimate([] if rescan else todo, {p for p, _ in done})
+    gb, minutes = estimate([] if rescan else todo, {p for p, _ in done}, keep)
     free = free_gb(db_path)
     print(("Building" if first_run else "Updating") +
           f" the Apple localization database at {db_path}\n"
           f"from Apple's own software on this Mac (nothing is downloaded):", flush=True)
+    if keep:
+        print(f"  languages: {', '.join(locales)} (stored as {', '.join(sorted(keep - set(db.SOURCE_LANGS)))}), "
+              f"plus English", flush=True)
     for s in todo:
         print(f"  - {s['label']}", flush=True)
     print(f"This takes about {minutes:.0f} minutes and needs about {gb:.1f} GB of disk "
@@ -284,6 +329,9 @@ def scan(db_path, only=None, rescan=False, workers=None, force=False):
     conn = db.connect(db_path)
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = OFF")
+    if first_run:
+        conn.execute("INSERT OR REPLACE INTO meta VALUES ('locales', ?)", (",".join(locales or []),))
+        conn.commit()
     keys = Interner(conn, "keys", "key")
     langs = Interner(conn, "langs", "code")
     variants = Interner(conn, "variants", "variant")
@@ -312,7 +360,7 @@ def scan(db_path, only=None, rescan=False, workers=None, force=False):
         batch = []
         platform = src["platform"]
         with Pool(workers or os.cpu_count()) as pool:
-            for res in pool.imap_unordered(parse_job, ((f, src["root"]) for f in files), chunksize=64):
+            for res in pool.imap_unordered(parse_job, ((f, src["root"], keep) for f in files), chunksize=64):
                 done += 1
                 if res is None:
                     continue

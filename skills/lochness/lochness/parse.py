@@ -42,6 +42,46 @@ def split_platform(lang):
     return lang, ""
 
 
+# Where Apple keeps a locale's strings when it has no table for that exact code,
+# in order. Apple's bare "pt" is Brazilian Portuguese, so pt-PT must not fall back to it.
+LANG_FALLBACKS = {
+    "es-MX": ["es-419", "es"], "es-US": ["es-419", "es"], "es-419": ["es-MX", "es-US", "es"],
+    "pt-BR": ["pt"], "pt": ["pt-BR"], "pt-PT": [], "nb": ["no"],
+    "zh-HK": ["zh-Hant"], "zh-TW": ["zh-Hant"], "zh-MO": ["zh-Hant"], "zh-CN": ["zh-Hans"], "zh-SG": ["zh-Hans"],
+}
+# Locales Apple names by language alone: fr-FR is Apple's "fr", de-DE is "de".
+DEFAULT_REGION = {"fr-FR", "de-DE", "es-ES", "it-IT", "ja-JP", "ko-KR", "nl-NL", "ru-RU", "sv-SE", "da-DK",
+                  "fi-FI", "pl-PL", "tr-TR", "cs-CZ", "el-GR", "he-IL", "hu-HU", "id-ID", "th-TH", "uk-UA",
+                  "vi-VN", "ro-RO", "sk-SK", "hr-HR", "ca-ES", "ms-MY", "hi-IN", "ar-SA", "nb-NO", "en-US"}
+
+
+def canonical_lang(code):
+    """'fr-fr' -> 'fr-FR', 'zh_hans' -> 'zh-Hans', 'es-mx' -> 'es-MX'."""
+    parts = norm_lang(code.strip()).split("-")
+    out = [parts[0].lower()]
+    for p in parts[1:]:
+        out.append(p.title() if len(p) == 4 else p.upper() if len(p) in (2, 3) and p.isalpha() or p.isdigit() else p)
+    return norm_lang("-".join(out))
+
+
+def lang_candidates(code):
+    """Apple codes to try for a locale, best first: 'fr-FR' -> ['fr-FR', 'fr'], 'es-MX' -> ['es-MX', 'es-419', 'es']."""
+    c = canonical_lang(code)
+    out = [c] + LANG_FALLBACKS.get(c, [])
+    base = c.split("-")[0]
+    # A region falls back to its language (fr-CA -> fr); a script doesn't (sr-Latn is not sr, which is Cyrillic).
+    sub = c.split("-")[1:]
+    if sub and c not in LANG_FALLBACKS and len(sub) == 1 and len(sub[0]) != 4:
+        out.append(base)
+    if c in DEFAULT_REGION:
+        out.insert(0, base)
+    seen = []
+    for x in out:
+        if x not in seen:
+            seen.append(x)
+    return seen
+
+
 def norm_lang(raw):
     code = LANG_ALIASES.get(raw, raw)
     return LANG_ALIASES.get(code.replace("_", "-"), code.replace("_", "-"))

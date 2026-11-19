@@ -32,6 +32,12 @@ iOS 27 and watchOS 27 runtimes, that's tens of millions of translations in about
 database built in **about 10 minutes**. Before it starts, `lochness scan` prints the sources, the space it
 needs and the free space on your disk. `lochness purge` deletes the database.
 
+**Only need a few languages?** `lochness scan --langs fr-FR,es-MX` stores just those locales plus English:
+**0.4 GB, built in about a minute**, with the same answers for those languages. Locales are matched to
+Apple's codes with their fallbacks: `fr-FR` is Apple's `fr`, and `es-MX` keeps `es-419` and `es`, because
+Apple ships es-MX for only a few bundles and uses es-419 for Latin America everywhere else. The set is
+fixed when the database is first built; to change it, `lochness purge` and scan again.
+
 The database lives at `~/Library/Application Support/lochness/apple-l10n.sqlite`, outside the
 plugin, so updates keep it. Set `$LOCHNESS_DB` or pass `--db` to put it elsewhere.
 
@@ -58,6 +64,7 @@ standard library only, and simulator runtimes (installed with Xcode) for iOS and
 lochness status                      # database location and size, what's scanned, what's new
 lochness scan                        # build, or add a newer macOS or simulator runtime
 lochness scan --only iOS             # one source
+lochness scan --langs fr-FR,es-MX    # only these locales (+ English): ~0.4 GB instead of 4–5 GB
 lochness purge                       # delete the database
 
 lochness lookup "Delete Recording" -l ar,he,fr -p iOS
