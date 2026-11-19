@@ -110,7 +110,7 @@ WHERE platform = 'iOS' AND lang = 'ar' AND (bundle_path, table_name, key) IN (
   SELECT bundle_path, table_name, key FROM v_entries WHERE platform = 'iOS' AND lang = 'en' AND text = 'Share…');
 ```
 
-## Note
+## License
 
-The translations are Apple's. This tool reads them from your own Mac as a reference for localizing
+The code is MIT-licensed (see [LICENSE](LICENSE)). The translations it reads are Apple's. This tool reads them from your own Mac as a reference for localizing
 your own apps; don't redistribute the database.

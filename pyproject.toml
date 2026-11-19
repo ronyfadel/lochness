@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Apple's own UI translations, from this Mac, as a local reference database for localizing apps."
 readme = "README.md"
 requires-python = ">=3.9"
+license = { text = "MIT" }
 
 [project.scripts]
 lochness = "lochness.__main__:main"

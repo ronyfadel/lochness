@@ -5,5 +5,6 @@
   "author": { "name": "Rony Fadel", "url": "https://github.com/ronyfadel" },
   "homepage": "https://github.com/ronyfadel/lochness",
   "repository": "https://github.com/ronyfadel/lochness",
+  "license": "MIT",
   "keywords": ["localization", "l10n", "i18n", "xcstrings", "ios", "macos", "translation"]
 }
