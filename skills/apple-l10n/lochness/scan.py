@@ -4,6 +4,8 @@ import datetime
 import json
 import os
 import plistlib
+import re
+import shutil
 import subprocess
 import sys
 import time
@@ -64,24 +66,88 @@ def discover_sources():
     mac_dirs = [r for r in MAC_ROOTS if os.path.isdir(r)] + apple_apps()
     sources.append({"platform": "macOS", "os_version": version, "os_build": build,
                     "root": "/", "dirs": mac_dirs, "label": f"macOS {version} ({build})"})
+    ios = latest_ios_runtime()
+    if ios:
+        sources.append(ios)
+    return sources
+
+
+def _version_key(version, build):
+    """Sort key: 27.2 > 27.1.1, then Apple build numbers, 24B91016s > 24B8117."""
+    v = tuple(int(x) for x in re.findall(r"\d+", version or ""))
+    m = re.match(r"(\d+)([A-Z])(\d+)([a-z]?)", build or "")
+    b = (int(m.group(1)), m.group(2), int(m.group(3)), m.group(4)) if m else (0, "", 0, "")
+    return v, b
+
+
+def latest_ios_runtime():
+    """The newest installed iOS simulator runtime as a source, or None. Only one is scanned:
+    older runtimes and other platforms add disk space but little new wording."""
     try:
         out = subprocess.run(["xcrun", "simctl", "runtime", "list", "-j"], capture_output=True, text=True, timeout=60)
         runtimes = json.loads(out.stdout or "{}")
     except Exception:
         runtimes = {}
+    found = []
     for rt in runtimes.values():
         bundle = rt.get("runtimeBundlePath")
+        if rt.get("platformIdentifier") != "com.apple.platform.iphonesimulator":
+            continue
         if not bundle or rt.get("state") not in (None, "Ready"):
             continue
         root = os.path.join(bundle, "Contents/Resources/RuntimeRoot")
         if not os.path.isdir(root):
             continue
-        pname, version, build = system_version(root)
-        platform = {"iPhone OS": "iOS", "Watch OS": "watchOS", "Apple TVOS": "tvOS"}.get(pname, pname) or rt.get("platformIdentifier", "unknown")
-        sources.append({"platform": platform, "os_version": version or rt.get("version"),
-                        "os_build": build or rt.get("build"), "root": root, "dirs": [root],
-                        "label": f"{platform} {version} ({build}) simulator"})
-    return sources
+        _, version, build = system_version(root)
+        version, build = version or rt.get("version"), build or rt.get("build")
+        found.append({"platform": "iOS", "os_version": version, "os_build": build, "root": root, "dirs": [root],
+                      "label": f"iOS {version} ({build}) simulator"})
+    return max(found, key=lambda s: _version_key(s["os_version"], s["os_build"]), default=None)
+
+
+NO_SIMULATOR = ("No iOS simulator runtime found, so only macOS will be scanned and iOS-only wording "
+                "(Settings, Health, SpringBoard…) will be missing. Install one in Xcode > Settings > Components, "
+                "or run `xcodebuild -downloadPlatform iOS`, then `lochness scan` again.")
+
+
+def has_ios(sources):
+    return any(s["platform"] == "iOS" for s in sources)
+
+
+# Rough database growth per source, measured on macOS 26 + iOS 27 + watchOS 27
+# (about 72 bytes per stored string). A second runtime of a platform already in
+# the database adds little, because identical tables are stored once.
+GB_PER_SOURCE = {"macOS": 1.6, "iOS": 2.0, "watchOS": 0.9, "tvOS": 0.9, "visionOS": 1.6, "xrOS": 1.6}
+GB_EXTRA_RUNTIME = 0.2
+MINUTES_PER_SOURCE = 2.5
+MINUTES_INDEXING = 2.5
+
+
+def scanned_keys(conn):
+    return {(p, b) for p, b in conn.execute("SELECT platform, os_build FROM sources WHERE scanned_at IS NOT NULL")}
+
+
+def pending_sources(sources, done):
+    """Sources not in the database yet. Matched on platform and build, not on the
+    filesystem root: simulator runtimes are mounted under a path that changes."""
+    return [s for s in sources if (s["platform"], s["os_build"]) not in done]
+
+
+def estimate(pending, done_platforms=()):
+    """(gigabytes, minutes) that scanning these sources should take."""
+    gb, seen = 0.0, set(done_platforms)
+    for s in pending:
+        gb += GB_EXTRA_RUNTIME if s["platform"] in seen else GB_PER_SOURCE.get(s["platform"], 1.5)
+        seen.add(s["platform"])
+    minutes = MINUTES_PER_SOURCE * len(pending) + (MINUTES_INDEXING if pending else 0)
+    return gb, minutes
+
+
+def free_gb(db_path):
+    d = os.path.dirname(os.path.abspath(db_path))
+    while not os.path.exists(d):
+        d = os.path.dirname(d)
+    return shutil.disk_usage(d).free / 1e9
 
 
 def walk_files(dirs):
@@ -170,13 +236,37 @@ class Interner:
             self.pending = []
 
 
-def scan(db_path, only=None, rescan=False, workers=None):
-    conn = db.connect(db_path)
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA synchronous = OFF")
+def scan(db_path, only=None, rescan=False, workers=None, force=False):
     sources = discover_sources()
     if only:
         sources = [s for s in sources if any(o.lower() in s["label"].lower() for o in only)]
+    first_run = not os.path.exists(db_path)
+    done = set()
+    if not first_run:
+        with db.connect(db_path, readonly=True) as c:
+            done = scanned_keys(c)
+    if not has_ios(sources) and not (only and not any("ios" in o.lower() for o in only)):
+        print(NO_SIMULATOR + "\n", flush=True)
+    todo = sources if rescan else pending_sources(sources, done)
+    if not todo:
+        print("Nothing new to scan: every source is already in the database (use --rescan to scan again).")
+        return
+    gb, minutes = estimate([] if rescan else todo, {p for p, _ in done})
+    free = free_gb(db_path)
+    print(("Building" if first_run else "Updating") +
+          f" the Apple localization database at {db_path}\n"
+          f"from Apple's own software on this Mac (nothing is downloaded):", flush=True)
+    for s in todo:
+        print(f"  - {s['label']}", flush=True)
+    print(f"This takes about {minutes:.0f} minutes and needs about {gb:.1f} GB of disk "
+          f"({free:.0f} GB free). `lochness purge` deletes it.\n", flush=True)
+    if free < gb * 1.5 + 1 and not force:
+        raise SystemExit(f"Not enough free disk: about {gb * 1.5 + 1:.1f} GB is needed while building. "
+                         "Free some space, scan fewer sources with --only, or pass --force.")
+
+    conn = db.connect(db_path)
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = OFF")
     keys = Interner(conn, "keys", "key")
     langs = Interner(conn, "langs", "code")
     variants = Interner(conn, "variants", "variant")
@@ -185,13 +275,14 @@ def scan(db_path, only=None, rescan=False, workers=None):
     tables = {(b, n, f): i for i, b, n, f in conn.execute("SELECT id, bundle_id, name, format FROM tables")}
 
     for src in sources:
-        row = conn.execute("SELECT id FROM sources WHERE platform=? AND os_build IS ? AND root=?",
-                           (src["platform"], src["os_build"], src["root"])).fetchone()
-        if row and not rescan:
+        if src not in todo:
             print(f"skip {src['label']} (already scanned; use --rescan)", flush=True)
             continue
+        row = conn.execute("SELECT id FROM sources WHERE platform=? AND os_build IS ?",
+                           (src["platform"], src["os_build"])).fetchone()
         if row:
             source_id = row[0]
+            conn.execute("UPDATE sources SET root=? WHERE id=?", (src["root"], source_id))
         else:
             source_id = conn.execute(
                 "INSERT INTO sources (platform, os_version, os_build, root, label) VALUES (?,?,?,?,?)",
@@ -255,3 +346,4 @@ def scan(db_path, only=None, rescan=False, workers=None):
     conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     conn.close()
     print(f"  {time.time() - t0:.0f}s", flush=True)
+    print(f"Done. The database is {db.size_on_disk(db_path) / 1e9:.1f} GB.", flush=True)

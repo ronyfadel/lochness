@@ -1,0 +1,9 @@
+{
+  "name": "apple-l10n",
+  "version": "0.1.0",
+  "description": "Apple-quality app localization: translate and review String Catalogs against Apple's own translations, from a database built locally from your Mac's OS and its iOS simulator runtime.",
+  "author": { "name": "Rony Fadel", "url": "https://github.com/ronyfadel" },
+  "homepage": "https://github.com/ronyfadel/apple-loch-ness",
+  "repository": "https://github.com/ronyfadel/apple-loch-ness",
+  "keywords": ["localization", "l10n", "i18n", "xcstrings", "ios", "macos", "translation"]
+}

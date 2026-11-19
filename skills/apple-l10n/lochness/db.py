@@ -8,10 +8,20 @@ import sqlite3
 def text_hash(text):
     return int.from_bytes(hashlib.blake2b(text.encode("utf-8", "surrogatepass"), digest_size=8).digest(), "big", signed=True)
 
+# Outside the code, so reinstalling or updating the plugin keeps the database.
 DEFAULT_DB = os.environ.get(
     "LOCHNESS_DB",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "apple-l10n.sqlite"),
+    os.path.expanduser("~/Library/Application Support/lochness/apple-l10n.sqlite"),
 )
+
+
+def db_files(path):
+    """The database and its SQLite sidecar files that exist on disk."""
+    return [f for f in (path, path + "-wal", path + "-shm") if os.path.exists(f)]
+
+
+def size_on_disk(path):
+    return sum(os.path.getsize(f) for f in db_files(path))
 
 # Development-language codes, in order of preference, used to find the
 # English text a translation was made from.
@@ -99,7 +109,10 @@ WHERE x.id IN (SELECT DISTINCT e.text_id FROM entries e
 def connect(path=DEFAULT_DB, readonly=False):
     if readonly:
         if not os.path.exists(path):
-            raise SystemExit(f"No database at {path}. Run: python3 -m lochness scan")
+            raise SystemExit(
+                f"No database at {path} yet. It is built locally from this Mac's Apple software.\n"
+                "Run `lochness status` to see what would be scanned and how much disk it needs, "
+                "then `lochness scan` to build it.")
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     else:
         os.makedirs(os.path.dirname(path), exist_ok=True)

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lochness"
+version = "0.1.0"
+description = "Apple's own UI translations, from this Mac, as a local reference database for localizing apps."
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.scripts]
+lochness = "lochness.__main__:main"
+
+[tool.setuptools]
+package-dir = { "" = "skills/apple-l10n" }
+packages = ["lochness"]

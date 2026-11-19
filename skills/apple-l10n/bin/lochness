@@ -1,0 +1,10 @@
+#!/bin/bash
+# Runs the lochness CLI from this skill folder (Python 3 standard library only).
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  [[ "$src" != /* ]] && src="$dir/$src"
+done
+root="$(cd -P "$(dirname "$src")/.." && pwd)"
+exec env PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" python3 -m lochness "$@"
