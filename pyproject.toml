@@ -13,5 +13,5 @@ requires-python = ">=3.9"
 lochness = "lochness.__main__:main"
 
 [tool.setuptools]
-package-dir = { "" = "skills/loch-ness" }
+package-dir = { "" = "skills/lochness" }
 packages = ["lochness"]

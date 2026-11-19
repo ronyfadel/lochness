@@ -1,13 +1,13 @@
 {
-  "name": "loch-ness",
+  "name": "lochness",
   "description": "Apple-quality localization for Claude Code.",
   "owner": { "name": "Rony Fadel", "url": "https://github.com/ronyfadel" },
   "plugins": [
     {
-      "name": "loch-ness",
+      "name": "lochness",
       "description": "Translate and review String Catalogs against Apple's own translations, from a database built locally from your Mac's OS and simulator runtimes.",
       "source": "./",
-      "homepage": "https://github.com/ronyfadel/loch-ness",
+      "homepage": "https://github.com/ronyfadel/lochness",
       "keywords": ["localization", "l10n", "xcstrings", "ios", "macos"]
     }
   ]

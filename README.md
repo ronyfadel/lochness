@@ -1,4 +1,4 @@
-# loch-ness
+# lochness
 
 **Localize your app the way Apple localizes iOS.** A Claude Code skill and CLI that look up how Apple
 translated the same English string, or the UI terms inside it, across macOS and the
@@ -40,16 +40,16 @@ plugin, so updates keep it. Set `$LOCHNESS_DB` or pass `--db` to put it elsewher
 **Claude Code plugin** (skill + CLI):
 
 ```
-/plugin marketplace add ronyfadel/loch-ness
-/plugin install loch-ness@loch-ness
+/plugin marketplace add ronyfadel/lochness
+/plugin install lochness@lochness
 ```
 
 Then ask Claude to "localize my app into French, German and Japanese" or "check my translations
 against iOS". On first use the skill tells you it's building the database and how much space it
 takes, then runs the scan in the background.
 
-**CLI only:** `pipx install git+https://github.com/ronyfadel/loch-ness` (or
-`uv tool install …`), or clone and run `skills/loch-ness/bin/lochness`. It needs macOS and Python 3.9+,
+**CLI only:** `pipx install git+https://github.com/ronyfadel/lochness` (or
+`uv tool install …`), or clone and run `skills/lochness/bin/lochness`. It needs macOS and Python 3.9+,
 standard library only, and simulator runtimes (installed with Xcode) for iOS and watchOS strings.
 
 ## CLI
