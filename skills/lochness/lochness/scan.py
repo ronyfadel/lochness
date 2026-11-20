@@ -179,6 +179,73 @@ def estimate(pending, done_platforms=(), keep=None):
     return gb, minutes + (MINUTES_INDEXING if pending else 0)
 
 
+def stored_platforms(conn):
+    """The platforms picked when the database was first built, or None for every platform."""
+    try:
+        row = conn.execute("SELECT v FROM meta WHERE k = 'platforms'").fetchone()
+    except Exception:
+        return None
+    return set(row[0].split(",")) if row and row[0] else None
+
+
+def pick_sources(sources, keep=None):
+    """Let the user tick the sources to scan, all ticked to start with. Needs a terminal on
+    stdin and stdout; otherwise every source is returned. Returns the picked sources."""
+    if len(sources) < 2 or not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return sources
+    import termios
+    import tty
+
+    picked = [True] * len(sources)
+    cur = 0
+    sizes = [estimate([s], (), keep)[0] for s in sources]
+    width = max(len(s["label"]) for s in sources)
+    out = sys.stdout
+
+    def draw(first=False):
+        if not first:
+            out.write(f"\x1b[{len(sources) + 1}F")  # back to the top of the menu
+        for i, s in enumerate(sources):
+            mark = "[x]" if picked[i] else "[ ]"
+            line = f"{'>' if i == cur else ' '} {mark} {s['label']:<{width}}  ~{sizes[i]:.1f} GB"
+            out.write("\x1b[2K" + (f"\x1b[7m{line}\x1b[0m" if i == cur else line) + "\n")
+        total = sum(sz for sz, p in zip(sizes, picked) if p)
+        out.write(f"\x1b[2K  ~{total:.1f} GB in all. ↑/↓ move, space toggles, a all/none, enter scans, q quits")
+        out.flush()
+
+    print("Which sources should go in the database? (fixed once built; `lochness purge` to change)")
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        out.write("\x1b[?25l")
+        draw(first=True)
+        while True:
+            key = os.read(fd, 3).decode(errors="ignore")
+            if key in ("\x1b[A", "k"):
+                cur = (cur - 1) % len(sources)
+            elif key in ("\x1b[B", "j"):
+                cur = (cur + 1) % len(sources)
+            elif key == " ":
+                picked[cur] = not picked[cur]
+            elif key == "a":
+                picked = [not all(picked)] * len(sources)
+            elif key in ("\r", "\n"):
+                if any(picked):
+                    break
+            elif key in ("q", "\x1b", "\x03", "\x04"):
+                raise KeyboardInterrupt
+            draw()
+    except KeyboardInterrupt:
+        raise SystemExit("\nNothing scanned.")
+    finally:
+        out.write("\x1b[?25h\n")
+        out.flush()
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    print()
+    return [s for s, p in zip(sources, picked) if p]
+
+
 def stored_locales(conn):
     """The locales a database was limited to with --langs, or None for every language."""
     try:
@@ -287,8 +354,10 @@ class Interner:
 
 def scan(db_path, only=None, rescan=False, workers=None, force=False, locales=None):
     sources = discover_sources()
+    offered = {s["platform"] for s in sources}
     if only:
         sources = [s for s in sources if any(o.lower() in s["label"].lower() for o in only)]
+    warning = None if only else simulator_warning(sources)
     first_run = not os.path.exists(db_path)
     done = set()
     locales = sorted({parse.canonical_lang(l) for l in locales}) if locales else None
@@ -296,16 +365,25 @@ def scan(db_path, only=None, rescan=False, workers=None, force=False, locales=No
         c = db.connect(db_path, readonly=True)
         done = scanned_keys(c)
         stored = stored_locales(c)
-        c.close()
         if locales and locales != stored:
             have = ", ".join(stored) if stored else "every language"
             raise SystemExit(f"The database at {db_path} was built for {have}. To build it for "
                              f"{', '.join(locales)} instead, run `lochness purge` first, then scan again.")
         locales = stored
+        platforms = stored_platforms(c)
+        c.close()
+        if platforms and not only:
+            sources = [s for s in sources if s["platform"] in platforms]
     keep = keep_langs(locales)
-    warning = None if only else simulator_warning(sources)
     if warning:
         print(warning + "\n", flush=True)
+    picked_platforms = None
+    if first_run:
+        if not only:
+            sources = pick_sources(sources, keep)
+        # Remembered, so later scans don't add the platforms that were left out.
+        if {s["platform"] for s in sources} < offered:
+            picked_platforms = {s["platform"] for s in sources}
     todo = sources if rescan else pending_sources(sources, done)
     if not todo:
         print("Nothing new to scan: every source is already in the database (use --rescan to scan again).")
@@ -331,6 +409,8 @@ def scan(db_path, only=None, rescan=False, workers=None, force=False, locales=No
     conn.execute("PRAGMA synchronous = OFF")
     if first_run:
         conn.execute("INSERT OR REPLACE INTO meta VALUES ('locales', ?)", (",".join(locales or []),))
+        if picked_platforms:
+            conn.execute("INSERT OR REPLACE INTO meta VALUES ('platforms', ?)", (",".join(sorted(picked_platforms)),))
         conn.commit()
     keys = Interner(conn, "keys", "key")
     langs = Interner(conn, "langs", "code")

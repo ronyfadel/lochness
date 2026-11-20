@@ -25,7 +25,10 @@ Run `lochness status` first.
   `lochness purge` removes it. If the user has said which languages they localize into, or disk
   space is tight, build only those with `--langs`, using the catalog's locales (for example
   `lochness scan --langs fr-FR,es-MX`). That makes it about 0.4 GB and 1 minute for two languages.
-  Tell them that adding a language later means `lochness purge` and a rebuild. Then run the scan
+  Tell them that adding a language later means `lochness purge` and a rebuild. If `status` lists
+  more than macOS and iOS and the app targets fewer platforms, offer to leave the others out: pass
+  one `--only` per platform to keep (for example `--only macOS --only iOS`). This is remembered for later scans.
+  Then run the scan
   **in the background**, since it outlasts a
   normal command timeout. Do work that doesn't need it meanwhile, such as reading the catalog and
   the app's context. If `scan` stops because of low disk space, tell the user; don't pass `--force` on

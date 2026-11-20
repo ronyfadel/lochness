@@ -27,6 +27,11 @@ localization files that are already on your Mac and builds a local SQLite databa
   UIKit, SwiftUI, Settings, Health, Camera… Older runtimes of a platform are skipped: they cost disk space and add
   little new wording. If no simulator runtime is installed, `lochness` says so and scans macOS only.
 
+In a terminal, the first `lochness scan` lists the sources it found on this Mac (only the simulator
+runtimes that are installed), all ticked, with the space each needs: untick the ones you don't want and press
+Enter. The choice is remembered, so later scans only add newer versions of those platforms. `--only` makes the
+same choice without the picker.
+
 It reads `.loctable`, `.strings` (binary, XML or text) and `.stringsdict` files. For macOS 26 plus the
 iOS 27 and watchOS 27 runtimes, that's tens of millions of translations in about 90 languages, a **4–5 GB**
 database built in **about 10 minutes**. Before it starts, `lochness scan` prints the sources, the space it
@@ -63,7 +68,7 @@ standard library only, and simulator runtimes (installed with Xcode) for iOS and
 ```sh
 lochness status                      # database location and size, what's scanned, what's new
 lochness scan                        # build, or add a newer macOS or simulator runtime
-lochness scan --only iOS             # one source
+lochness scan --only iOS             # one source (on the first scan: only this platform, remembered)
 lochness scan --langs fr-FR,es-MX    # only these locales (+ English): ~0.4 GB instead of 4–5 GB
 lochness purge                       # delete the database
 

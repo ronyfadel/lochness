@@ -9,7 +9,8 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("scan", help="scan macOS and the newest simulator runtime of each platform")
-    s.add_argument("--only", action="append", help="only sources whose label contains this (e.g. macOS, iOS, watchOS)")
+    s.add_argument("--only", action="append", help="only sources whose label contains this (e.g. macOS, iOS, watchOS); on the first "
+                                         "scan this replaces the picker and is remembered")
     s.add_argument("--rescan", action="store_true", help="scan sources again even if already in the database")
     s.add_argument("--workers", type=int)
     s.add_argument("--list", action="store_true", help="list the sources that would be scanned and exit")

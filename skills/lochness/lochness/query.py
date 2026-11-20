@@ -231,6 +231,7 @@ def cmd_status(args):
     """Where the database is, how big, what is in it, and what could still be scanned."""
     path = args.db
     sources = scan.discover_sources()
+    warning = scan.simulator_warning(sources)
     out = {"db": path, "exists": os.path.exists(path)}
     done = set()
     if out["exists"]:
@@ -238,6 +239,10 @@ def cmd_status(args):
         done = scan.scanned_keys(conn)
         out["size_gb"] = round(db.size_on_disk(path) / 1e9, 2)
         out["languages"] = scan.stored_locales(conn) or "all"
+        platforms = scan.stored_platforms(conn)
+        if platforms:
+            out["platforms"] = sorted(platforms)
+            sources = [s for s in sources if s["platform"] in platforms]
         out["scanned"] = [{"source": label, "scanned_at": at} for label, at in
                           conn.execute("SELECT label, scanned_at FROM sources WHERE scanned_at IS NOT NULL ORDER BY id")]
     pending = scan.pending_sources(sources, done)
@@ -251,8 +256,8 @@ def cmd_status(args):
     keep = scan.keep_langs(locales)
     gb, minutes = scan.estimate(pending, {p for p, _ in done}, keep)
     out["not_scanned"] = [s["label"] for s in pending]
-    if scan.simulator_warning(sources):
-        out["warning"] = scan.simulator_warning(sources)
+    if warning:
+        out["warning"] = warning
     if pending:
         out["scan_estimate"] = {"gb": round(gb, 1), "minutes": round(minutes), "free_gb": round(scan.free_gb(path))}
     if args.json:
@@ -261,6 +266,8 @@ def cmd_status(args):
         return
     if out["exists"]:
         langs_note = "all languages" if out["languages"] == "all" else "languages: " + ", ".join(out["languages"]) + " + English"
+        if "platforms" in out:
+            langs_note += ", platforms: " + ", ".join(out["platforms"])
         print(f"database  {path}  ({out['size_gb']:.1f} GB, {langs_note})")
         for s in out["scanned"]:
             print(f"  scanned  {s['source']}  ({s['scanned_at']})")
@@ -274,7 +281,8 @@ def cmd_status(args):
         print(f"`lochness scan` would take about {e['minutes']} minutes and add about {e['gb']:.1f} GB "
               f"({e['free_gb']} GB free).")
     else:
-        print("Up to date with this Mac's macOS and the newest simulator runtime of each platform.")
+        print("Up to date with this Mac's " + (", ".join(out["platforms"]) if "platforms" in out else
+                                              "macOS and the newest simulator runtime of each platform") + ".")
     if "warning" in out:
         print(out["warning"])
 
